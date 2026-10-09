@@ -97,13 +97,13 @@ def get_project_action_keyboard(project_id: str):
     return InlineKeyboardMarkup(keyboard)
 
 # ----------------- TELEGRAM COMMAND HANDLERS -----------------
-async def start_command(update: Update, context: ContextTypes.DEFAULT_KEY):
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     await register_user(user.id, user.username)
     
     welcome_text = (
-        f"✨ *Welcome to WebBuilder File Uploader* ✨\n\n"
-        f"Owner/Developer: `@myselfkhushi03`[span_1](start_span)[span_1](end_span)\n\n"
+        f"✨ *Welcome to WebifyFileBot* ✨\n\n"
+        f"Owner/Developer: `@myselfkhushi03`\n\n"
         f"Aap yahan apna koi bhi single code file, multiple files, ya poora `.zip` archive bhej sakte hain. Bot automatically ek unique project ID generate karega aur usko live web preview & public deployment mein convert kar dega!\n\n"
         f"💡 *Tap-to-Copy & Professional UI Enabled*"
     )
@@ -112,7 +112,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_KEY):
     elif update.callback_query:
         await update.callback_query.message.edit_text(welcome_text, parse_mode="Markdown", reply_markup=get_main_menu_keyboard())
 
-async def help_command(update: Update, context: ContextTypes.DEFAULT_KEY):
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
         f"📖 *WebBuilder Help & Guide*\n\n"
         f"1️⃣ **Naya Project Kaise Banayein?**\n"
@@ -120,12 +120,12 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_KEY):
         f"   • Ya phir direct koi code snippet / file / ZIP bot ko bhej dein.\n"
         f"2️⃣ **Unique Project Code:** Har project ko ek unique ID milti hai (e.g., `WEB-A3F9K2`).\n"
         f"3️⃣ **Tap-to-Copy:** Saare links aur codes copy-friendly format mein diye jaate hain.\n\n"
-        f"Developer: `@myselfkhushi03`[span_2](start_span)[span_2](end_span)"
+        f"Developer: `@myselfkhushi03`"
     )
     if update.message:
         await update.message.reply_text(help_text, parse_mode="Markdown", reply_markup=get_main_menu_keyboard())
 
-async def new_project_command(update: Update, context: ContextTypes.DEFAULT_KEY):
+async def new_project_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     args = context.args
     project_name = "MyWebProject" if not args else " ".join(args)
@@ -134,7 +134,6 @@ async def new_project_command(update: Update, context: ContextTypes.DEFAULT_KEY)
     project_path = os.path.join(PROJECTS_DIR, project_id)
     os.makedirs(project_path, exist_ok=True)
     
-    # Default index.html starter file
     default_html = f"<!DOCTYPE html>\n<html>\n<head><title>{project_name}</title></head>\n<body>\n<h1>Welcome to {project_name}</h1>\n<p>Built via WebBuilder Bot (@myselfkhushi03)</p>\n</body>\n</html>"
     with open(os.path.join(project_path, "index.html"), "w", encoding="utf-8") as f:
         f.write(default_html)
@@ -155,7 +154,7 @@ async def new_project_command(update: Update, context: ContextTypes.DEFAULT_KEY)
     )
     await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=get_project_action_keyboard(project_id))
 
-async def my_projects_handler(update: Update, context: ContextTypes.DEFAULT_KEY):
+async def my_projects_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
@@ -178,8 +177,7 @@ async def my_projects_handler(update: Update, context: ContextTypes.DEFAULT_KEY)
     
     await query.message.edit_text("📂 *Aapke Saare Projects:*", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(keyboard))
 
-# Handle incoming files, zip archives or code snippets
-async def handle_document_or_code(update: Update, context: ContextTypes.DEFAULT_KEY):
+async def handle_document_or_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message = update.message
     
@@ -197,17 +195,15 @@ async def handle_document_or_code(update: Update, context: ContextTypes.DEFAULT_
         tg_file = await context.bot.get_file(doc.file_id)
         await tg_file.download_to_drive(file_path)
         
-        # If uploaded file is a .zip archive, extract it automatically!
         if file_name.endswith(".zip"):
             with zipfile.ZipFile(file_path, 'r') as zip_ref:
                 zip_ref.extractall(project_path)
-            os.remove(file_path) # Remove zip after extraction
+            os.remove(file_path)
             file_list = os.listdir(project_path)
         else:
             file_list = [file_name]
             
     elif message.text:
-        # Direct code snippet pasted
         code_text = message.text
         file_name = "index.html" if "<html" in code_text.lower() else "script.js" if "console.log" in code_text else "main.py" if "def " in code_text else "data.txt"
         file_path = os.path.join(project_path, file_name)
@@ -217,11 +213,6 @@ async def handle_document_or_code(update: Update, context: ContextTypes.DEFAULT_
     else:
         await message.reply_text("❌ Unsupported format. Please send a code file, snippet, or ZIP archive.")
         return
-
-    # Ensure at least an index.html exists for web preview fallback
-    if "index.html" not in file_list and len(file_list) > 0:
-        # rename first text file or create index.html
-        pass
 
     await projects_collection.insert_one({
         "project_id": project_id,
@@ -240,13 +231,12 @@ async def handle_document_or_code(update: Update, context: ContextTypes.DEFAULT_
         f"📂 *Files Processed:* `{len(file_list)} files`\n\n"
         f"👁️ *Live Preview:* \n`{preview_url}`\n\n"
         f"🚀 *Public Deploy Link:* \n`{deploy_url}`\n\n"
-        f"Managed by `@myselfkhushi03`[span_3](start_span)[span_3](end_span)"
+        f"Managed by `@myselfkhushi03`"
     )
     
     await message.reply_text(success_msg, parse_mode="Markdown", reply_markup=get_project_action_keyboard(project_id))
 
-# Callback Query Router
-async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_KEY):
+async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
     
@@ -261,12 +251,12 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     elif data.startswith("preview_"):
         pid = data.split("_")[1]
         url = f"{WEBHOOK_URL}/preview/{pid}" if WEBHOOK_URL else f"http://localhost:{PORT}/preview/{pid}"
-        await query.answer(f"Preview URL generated!", show_alert=False)
+        await query.answer("Preview URL generated!")
         await query.message.reply_text(f"👁️ *Live Preview Link for `{pid}`:*\n`{url}`", parse_mode="Markdown")
     elif data.startswith("deploy_"):
         pid = data.split("_")[1]
         url = f"{WEBHOOK_URL}/s/{pid}" if WEBHOOK_URL else f"http://localhost:{PORT}/s/{pid}"
-        await query.answer(f"Deploy URL generated!", show_alert=False)
+        await query.answer("Deploy URL generated!")
         await query.message.reply_text(f"🚀 *Public Shareable Link for `{pid}`:*\n`{url}`", parse_mode="Markdown")
     elif data.startswith("files_"):
         pid = data.split("_")[1]
@@ -285,6 +275,13 @@ async def button_callback_handler(update: Update, context: ContextTypes.DEFAULT_
     elif data.startswith("manage_"):
         pid = data.split("_")[1]
         await query.message.edit_text(f"⚙️ *Managing Project:* `{pid}`", parse_mode="Markdown", reply_markup=get_project_action_keyboard(pid))
+
+# Register Handlers
+telegram_app.add_handler(CommandHandler("start", start_command))
+telegram_app.add_handler(CommandHandler("help", help_command))
+telegram_app.add_handler(CommandHandler("newproject", new_project_command))
+telegram_app.add_handler(CallbackQueryHandler(button_callback_handler))
+telegram_app.add_handler(MessageHandler(filters.Document.ALL | filters.TEXT & ~filters.COMMAND, handle_document_or_code))
 
 # ----------------- FASTAPI WEB ROUTES -----------------
 @app.get("/", response_class=HTMLResponse)
@@ -310,7 +307,6 @@ async def serve_project(project_id: str):
     if not os.path.exists(project_path):
         raise HTTPException(status_code=404, detail="Project not found!")
     
-    # Look for index.html or fallback to first available html/file
     target_file = "index.html"
     if not os.path.exists(os.path.join(project_path, target_file)):
         files = os.listdir(project_path)
