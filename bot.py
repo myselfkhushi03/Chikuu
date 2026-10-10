@@ -59,11 +59,11 @@ async def site_size(sid:str):
     r=await cur.to_list(length=1)
     return r[0]["s"] if r else 0
 
-async def put(sid:str,path:str,data:bytes,check=True):
+async def put(sid:str,path:str,data:bytes,verify:bool=True):
     p=clean_path(path)
     if not p: raise ValueError(f"'{path}' invalid")
     if len(data)>MAX_FILE: raise ValueError(f"{path} is {fmt_size(len(data))} > limit {fmt_size(MAX_FILE)}")
-    if check:
+    if verify:
         if not await db.sites.find_one({"sid":sid},{"_id":1}): raise ValueError("Site deleted")
         old=await db.files.find_one({"sid":sid,"path":p},{"size":1})
         total=await site_size(sid)-(old["size"] if old else 0)
@@ -82,7 +82,7 @@ async def add_zip(sid:str,data:bytes):
         for i in infos:
             name=i.filename[len(prefix):] if prefix and i.filename.startswith(prefix) else i.filename
             if not name.strip(): continue
-            try: await put(sid,name,z.read(i),check=False); cnt+=1
+            try: await put(sid,name,z.read(i),verify=False); cnt+=1
             except: pass
         return cnt
 
@@ -126,22 +126,13 @@ HELP_TEXT = f"""<b>☘️ Webify Help • Premium</b>
 - /new — Create new website
 - /mysites — Manage your sites
 - /edit CODE — Unlock via edit code
-
-<b>💎 How to create?</b>
-1. Tap ☘️ Create Website
-2. Choose Paste / Single / Multi
-3. Send HTML or ZIP
-4. Get instant link
 """
 MODE_TEXT = f"""<b>☘️ Create New Site</b>
 {DIV_LINE}
-Choose upload method — Premium Fast Deploy:
-
 <b>📝 Paste Code</b> — HTML direct
 <b>📄 Single / ZIP</b> — One shot deploy
 <b>📦 Multi Files</b> — Pro builder
 """
-PROCESSING_TEXT = ["☘️ Webifying your code...","⚡️ Deploying to CDN...","🎨 Optimizing assets...","🌍 Making it live..."]
 
 def B(text,data=None,url=None):
     if url: return InlineKeyboardButton(text=text,url=url)
@@ -169,7 +160,6 @@ async def premium_card(site:dict):
 🔑 <b>Code:</b> <code>{site['code']}</code>
 📊 <b>Stats:</b> {n} files • {fmt_size(size)} • {views} views
 🆔 <b>Slug:</b> <code>{site['slug']}</code>
-
 <i>Webify Premium • Fast • Secure</i>
 """
 
