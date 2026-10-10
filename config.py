@@ -25,7 +25,7 @@ MAX_SITE = int(MAX_SITE_MB * 1024 * 1024)
 RENDER_API_KEY = _env("RENDER_API_KEY")
 RENDER_SERVICE_ID = _env("RENDER_SERVICE_ID")
 
-# AUTO BASE_HOST - manually type karne ki zarurat nahi
+# AUTO BASE_HOST
 if _env("BASE_HOST"):
     BASE_HOST = _env("BASE_HOST").lower()
 else:
@@ -33,9 +33,7 @@ else:
         BASE_HOST = urlparse(WEBHOOK_URL).hostname or ""
     except:
         BASE_HOST = ""
-    if not BASE_HOST:
-        BASE_HOST = "chikuuwebbottttt.onrender.com"
 
-LOCAL_HOSTS = {BASE_HOST.lower(), "localhost", "127.0.0.1", f"www.{BASE_HOST.lower()}"}
+LOCAL_HOSTS = {h for h in [BASE_HOST.lower(), "localhost", "127.0.0.1", f"www.{BASE_HOST.lower()}" if BASE_HOST else ""] if h}
 RESERVED_SLUGS = {"admin", "api", "s", "health", "webhook", "static", "www", "login", "logout", "dashboard"}
 BOT_USERNAME = _env("BOT_USERNAME", "")
