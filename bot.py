@@ -16,8 +16,10 @@ from database import db, init_db
 
 log = logging.getLogger("webify")
 
-def now(): return int(time.time())
-def esc(s): return _html.escape(str(s))
+def now():
+    return int(time.time())
+def esc(s):
+    return _html.escape(str(s))
 def fmt_size(n:int):
     if n < 1024: return f"{n} B"
     if n < 1048576: return f"{n/1024:.1f} KB"
@@ -130,10 +132,18 @@ async def premium_card(site:dict):
     return f"<b>{esc(site['title'])}</b>\nLink: {esc(link)}\nCode: <code>{site['code']}</code>\nFiles: {n} - {fmt_size(size)}\n"
 def panel_kb(site:dict):
     sid = site["sid"]
-    return KB([B("Open Live Site", url=site_url(site))],[B("Files Manager","fl:"+sid), B("Short Link","sl:"+sid)],[B("Show Code","code:"+sid), B("Delete Site","del:"+sid)],[B("My Sites","my")])def page(status, code, title, msg, extra=""):
+    return KB(
+        [B("Open Live Site", url=site_url(site))],
+        [B("Files Manager","fl:"+sid), B("Short Link","sl:"+sid)],
+        [B("Show Code","code:"+sid), B("Delete Site","del:"+sid)],
+        [B("My Sites","my")]
+    )
+def page(status, code, title, msg, extra=""):
     html = "<html><body><h1>" + esc(code) + "</h1><h2>" + esc(title) + "</h2><p>" + esc(msg) + "</p>" + extra + "</body></html>"
     return web.Response(text=html, status=status, content_type="text/html")
-def not_found(): return page(404, "Not Found", "Not Found", "Site not found")
+
+def not_found():
+    return page(404, "Not Found", "Not Found", "Site not found")
 
 async def serve_site(site:dict, tail:str, is_dir:bool):
     p = clean_path(tail)
@@ -236,7 +246,8 @@ async def auth(c:CallbackQuery, sid:str):
     site = await db.sites.find_one({"sid":sid})
     if not site: await c.answer("Site deleted", show_alert=True); return None
     if not await can_edit(c.from_user.id, site): await c.answer("No access", show_alert=True); return None
-    return site@r.message(CommandStart())
+    return site
+@r.message(CommandStart())
 async def cmd_start(m:Message, state:FSMContext):
     await reset(state); await m.answer(WELCOME, reply_markup=reply_kb(m.from_user.id)); await m.answer("Menu", reply_markup=menu_kb(m.from_user.id))
 @r.message(Command("help"))
