@@ -1,7 +1,7 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from config import MONGO_URL, DB_NAME
 import logging
-log = logging.getLogger("webmaker")
+log = logging.getLogger("webify")
 
 class _DB:
     users = None
@@ -22,4 +22,6 @@ async def init_db():
     await db.sites.create_index("slug", unique=True)
     await db.sites.create_index("code", unique=True)
     await db.sites.create_index("owner")
+    await db.files.create_index([("sid", 1), ("path", 1)], unique=True)
+    await db.files.create_index("sid")
     log.info("MongoDB connected OK - motor 3.4.0")
