@@ -2,7 +2,6 @@
 ✨ Webify Bot — Entry Point
 Sab modules yahan wire hote hain.
 """
-import asyncio
 import traceback
 
 from telegram import Update
@@ -88,13 +87,29 @@ async def on_startup(app: Application):
     log.info(f"✅ Webhook set: {webhook_url}")
 
 
-async def on_shutdown(app: Application):
+async def on_post_stop(app: Application):
+    """
+    post_stop hook — Application.stop() ke turant baad chalta hai.
+    Yahan safe hai webhook delete karna (client abhi bhi available hai).
+    """
     try:
         await app.bot.delete_webhook(drop_pending_updates=False)
         log.info("🔌 Webhook deleted")
     except Exception:
-        log.exception("delete_webhook fail")
-    await db.close()
+        log.exception("delete_webhook fail (okay, ignore)")
+
+
+async def on_shutdown(app: Application):
+    """
+    post_shutdown hook — PTB ne client already close kar diya hota hai.
+    Yahan koi API call NAHI karni. Sirf cleanup.
+    """
+    log.info("🔌 Bot shutting down — closing DB")
+    try:
+        await db.close()
+        log.info("✅ Shutdown complete")
+    except Exception:
+        log.exception("db.close fail")
 
 
 # ============================================================
@@ -110,6 +125,7 @@ def main():
         Application.builder()
         .token(BOT_TOKEN)
         .post_init(on_startup)
+        .post_stop(on_post_stop)
         .post_shutdown(on_shutdown)
         .build()
     )
