@@ -1,29 +1,23 @@
-import asyncio, html as _html, io, logging, mimetypes, os, re, secrets, time, traceback, zipfile
-from urllib.parse import urlparse
-import aiohttp
+import asyncio, html as _html, io, logging, mimetypes, os, re, secrets, time, zipfile
 from aiohttp import web
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import *
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, Message, ReplyKeyboardMarkup
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 from bson.binary import Binary
-from pymongo.errors import PyMongoError
 from config import *
 from database import db, init_db
 
-log = logging.getLogger("webify Bot☘️")
+log = logging.getLogger("Webify Bot☘️")
 DIV = "━━━━━━━━━━━━━━━━"
 BTN_CREATE = "➕ Create Website"
 BTN_MY = "📂 My Websites"
-BTN_EDIT = "✏️ Edit by Code"
-BTN_HELP = "❓ Help"
-BTN_ADMIN = "🛠 Admin Panel"
 
 for _ext,_mt in {".webp":"image/webp",".woff2":"font/woff2"}.items():
     mimetypes.add_type(_mt,_ext)
@@ -54,11 +48,11 @@ def looks_like_code(t:str):
     return bool(re.search(r"<\s*(html|head|body|div|style|script)",s,re.I))
 
 async def site_size(sid:str):
-    cur=db.files.aggregate([{"$match":{"sid":sid}},{"$group":{"_id":None,"s":{"$sum":"$size"}}}])
-    r=await cur.to_list(length=1)
+    cur = db.files.aggregate([{"$match":{"sid":sid}},{"$group":{"_id":None,"s":{"$sum":"$size"}}}])
+    r = await cur.to_list(length=1)
     return r[0]["s"] if r else 0
 
-async def put(sid:str,path:str,data:bytes,check:bool=True):
+async def put(sid:str,path:str,data:bytes,check=True):
     p=clean_path(path)
     if not p: raise ValueError(f"'{path}' invalid")
     if len(data)>MAX_FILE: raise ValueError(f"{path} too big")
@@ -66,7 +60,7 @@ async def put(sid:str,path:str,data:bytes,check:bool=True):
         if not await db.sites.find_one({"sid":sid},{"_id":1}): raise ValueError("Site deleted")
         old=await db.files.find_one({"sid":sid,"path":p},{"size":1})
         total=await site_size(sid)-(old["size"] if old else 0)
-        if total+len(data)>MAX_SITE: raise ValueError(f"Site limit")
+        if total+len(data)>MAX_SITE: raise ValueError("Site limit")
     mime=mimetypes.guess_type(p)[0] or "application/octet-stream"
     await db.files.update_one({"sid":sid,"path":p},{"$set":{"sid":sid,"path":p,"data":Binary(data),"mime":mime,"size":len(data),"ts":now()}},upsert=True)
     await db.sites.update_one({"sid":sid},{"$set":{"updated":now()}})
@@ -75,11 +69,9 @@ async def add_zip(sid:str,data:bytes):
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         infos=[i for i in z.infolist() if not i.is_dir()]
         if not infos: raise ValueError("ZIP empty")
-        cnt=0
         for i in infos:
-            try: await put(sid,i.filename,z.read(i),check=False); cnt+=1
+            try: await put(sid,i.filename,z.read(i),check=False)
             except: pass
-        return cnt,0
 
 async def new_site(owner:int):
     sid=secrets.token_hex(6); alphabet="abcdefghijklmnopqrstuvwxyz0123456789"
@@ -103,25 +95,21 @@ async def can_edit(uid:int,site:dict):
 async def quota_ok(uid:int): return uid in ADMINS or await db.sites.count_documents({"owner":uid})<MAX_SITES
 async def read_doc(bot,obj):
     buf=io.BytesIO(); await bot.download(obj,destination=buf); return buf.getvalue()
-def oops(title,why,fix=""): return f"⚠️ <b>{esc(title)}</b>\n{why}\n{fix}"
-def explain(e): return (type(e).__name__,esc(str(e))[:150],"Try again",True)
 
-WELCOME=f"<b>✦ WEB MAKER ✦</b>\n{DIV}\nPaste code/files to build website"
-HELP_TEXT=f"<b>Help</b>\n/new · /mysites · /edit CODE"
+WELCOME="<b>WEB MAKER</b>"
+MODE_TEXT="<b>Create Website</b>\nChoose mode"
 QUICK_TEXT="<b>Quick Actions</b>"
-MODE_TEXT=f"<b>Create Website</b>\n{DIV}\nChoose mode"
-NOT_CODE_TEXT="Send HTML code or files"
 
 def B(text,data=None,url=None):
     if url: return InlineKeyboardButton(text=text,url=url)
     return InlineKeyboardButton(text=text,callback_data=data)
 def KB(*rows): return InlineKeyboardMarkup(inline_keyboard=[list(r) for r in rows])
 def reply_kb(uid:int):
-    rows=[[KeyboardButton(text=BTN_CREATE),KeyboardButton(text=BTN_MY)],[KeyboardButton(text=BTN_EDIT),KeyboardButton(text=BTN_HELP)]]
-    if uid in ADMINS: rows.append([KeyboardButton(text=BTN_ADMIN)])
+    rows=[[KeyboardButton(text=BTN_CREATE),KeyboardButton(text="📂 My Websites")],[KeyboardButton(text="✏️ Edit by Code"),KeyboardButton(text="❓ Help")]]
+    if uid in ADMINS: rows.append([KeyboardButton(text="🛠 Admin Panel")])
     return ReplyKeyboardMarkup(keyboard=rows,resize_keyboard=True,is_persistent=True)
 def menu_kb(uid:int):
-    rows=[[B("➕ Create Website","new")],[B("📂 My Websites","my"),B("✏️ Edit by Code","editcode")],[B("❓ Help","help")]]
+    rows=[[B("➕ Create Website","new")],[B("📂 My Websites","my")],[B("❓ Help","help")]]
     if uid in ADMINS: rows.append([B("🛠 Admin Panel","adm")])
     return KB(*rows)
 def mode_kb(): return KB([B("📝 Paste Code","m:paste")],[B("📄 Single File / ZIP","m:single")],[B("📦 Multiple Files","m:multi")],[B("⬅️ Menu","menu")])
@@ -135,9 +123,10 @@ def panel_kb(site:dict):
     if site_url(site).startswith("https://"): rows.append([B("🌍 Open Website",url=site_url(site))])
     rows+=[[B("📝 Paste Code",f"pe:{sid}"),B("📤 Upload Files",f"up:{sid}")],[B("📁 Files",f"fl:{sid}"),B("🔗 Short Link",f"sl:{sid}")],[B("🗑 Delete",f"del:{sid}"),B("⬅️ My Sites","my")]]
     return KB(*rows)
-_PAGE="""<!doctype html><html><head><meta charset=utf-8></head><body><h1>%(code)s</h1><h2>%(title)s</h2><p>%(msg)s</p></body></html>"""
-def page(status,code,title,msg,extra=""): return web.Response(text=_PAGE % {"code":code,"title":title,"msg":msg,"extra":extra}, status=status, content_type="text/html")
-def not_found(): return page(404,"404","Not found","Not found")
+
+_PAGE="<!doctype html><html><head><meta charset=utf-8></head><body><h1>%(code)s</h1><h2>%(title)s</h2><p>%(msg)s</p></body></html>"
+def page(status,code,title,msg): return web.Response(text=_PAGE % {"code":code,"title":title,"msg":msg}, status=status, content_type="text/html")
+def not_found(): return page(404,"404","Not found")
 async def serve_site(site:dict,tail:str,is_dir:bool):
     p=clean_path(tail)
     if p is None: return not_found()
@@ -170,8 +159,8 @@ async def h_root(r):
     if host not in LOCAL_HOSTS:
         site=await _site_by_host(host)
         if site: return await serve_site(site, tail, r.path.endswith("/"))
-        return page(404,"404","Domain not connected","Not connected")
-    if tail=="": return page(200,"🌐","Web Maker","Bot running")
+        return page(404,"404","Domain not connected")
+    if tail=="": return page(200,"🌐","Web Maker")
     return not_found()
 
 @web.middleware
@@ -179,8 +168,10 @@ async def web_error_middleware(request, handler):
     try: return await handler(request)
     except web.HTTPException: raise
     except Exception as e:
+        import traceback
         log.exception("web error on %s", request.path)
-        return page(500,"500","Error","Server error")
+        tb = traceback.format_exc()[-2000:]
+        return web.Response(text=f"500 Error\n{tb}", status=500, content_type="text/plain")
 
 def add_routes(app):
     app.router.add_get("/health", h_health)
@@ -188,9 +179,9 @@ def add_routes(app):
     app.router.add_get("/s/{slug}/{tail:.*}", h_site)
     app.router.add_get("/{tail:.*}", h_root)
 
-r=Router(); admin_only=F.from_user.id.in_(ADMINS); ALBUMS={}; ALBUM_LOCK=asyncio.Lock()
+r=Router()
 class S(StatesGroup):
-    paste_new=State(); single_new=State(); multi=State(); edit_code=State(); paste_edit=State(); slug=State(); domain=State(); broadcast=State()
+    paste_new=State(); single_new=State(); multi=State(); edit_code=State(); slug=State()
 def plain_text(m: Message): return bool(m.text) and not m.text.startswith("/")
 
 class Guard(BaseMiddleware):
@@ -204,15 +195,13 @@ async def show(ev,text,kb=None):
     if isinstance(ev, CallbackQuery):
         try: await ev.answer()
         except: pass
-        msg=ev.message
-        try: await msg.edit_text(text,reply_markup=kb)
-        except: await msg.answer(text,reply_markup=kb)
+        try: await ev.message.edit_text(text,reply_markup=kb)
+        except: await ev.message.answer(text,reply_markup=kb)
     else: await ev.answer(text,reply_markup=kb)
 
 async def reset(state:FSMContext):
     d=await state.get_data()
-    if d.get("fresh") and d.get("sid") and not await db.files.count_documents({"sid":d["sid"]}):
-        await db.sites.delete_one({"sid":d["sid"]})
+    if d.get("fresh") and d.get("sid") and not await db.files.count_documents({"sid":d["sid"]}): await db.sites.delete_one({"sid":d["sid"]})
     await state.clear()
 async def send_card(ev,site,banner=""): await show(ev,banner+await card(site),panel_kb(site))
 async def finish_new(ev,site):
@@ -222,21 +211,20 @@ async def auth(c:CallbackQuery,sid:str):
     site=await db.sites.find_one({"sid":sid})
     if not site: await c.answer("Gone",show_alert=True); return None
     if not await can_edit(c.from_user.id,site): await c.answer("No access",show_alert=True); return None
-    return site@r.message(CommandStart())
+    return site
+
+@r.message(CommandStart())
 async def cmd_start(m:Message,state:FSMContext):
     await reset(state); await m.answer(WELCOME, reply_markup=reply_kb(m.from_user.id)); await m.answer(QUICK_TEXT, reply_markup=menu_kb(m.from_user.id))
-
 @r.message(Command("new"))
 @r.message(F.text==BTN_CREATE)
 @r.callback_query(F.data=="new")
 async def cmd_new(ev,state:FSMContext):
     if isinstance(ev, Message): await reset(state); await ev.answer(MODE_TEXT, reply_markup=mode_kb())
-    else: await reset(state); await show(ev,MODE_TEXT,mode_kb())
-
+    else: await show(ev,MODE_TEXT,mode_kb())
 @r.callback_query(F.data=="menu")
 async def cb_menu(c:CallbackQuery,state:FSMContext):
     await reset(state); await show(c,QUICK_TEXT,menu_kb(c.from_user.id))
-
 @r.message(Command("mysites"))
 @r.message(F.text==BTN_MY)
 @r.callback_query(F.data=="my")
@@ -249,7 +237,6 @@ async def my_sites(ev,state:FSMContext):
     rows.append([B("➕ New","new"),B("⬅️ Menu","menu")])
     text=f"My Websites ({len(items)})" if items else "No websites"
     await show(ev,text,KB(*rows))
-
 @r.callback_query(F.data.startswith("m:"))
 async def cb_mode(c:CallbackQuery,state:FSMContext):
     if not await quota_ok(c.from_user.id): return await c.answer(f"Limit {MAX_SITES}",show_alert=True)
@@ -261,11 +248,10 @@ async def cb_mode(c:CallbackQuery,state:FSMContext):
     else:
         site=await new_site(c.from_user.id); await state.set_state(S.multi); await state.update_data(sid=site["sid"],fresh=True)
         await show(c,"📦 Send files as File, press Done",done_kb(site["sid"]))
-
 @r.message(StateFilter(S.paste_new, S.single_new, None), F.text)
 async def create_from_text(m:Message,state:FSMContext):
-    if not looks_like_code(m.text) and await state.get_state() is None:
-        return await m.answer(NOT_CODE_TEXT, reply_markup=menu_kb(m.from_user.id))
+    if not m.text or m.text.startswith("/"): return
+    if await state.get_state() is None and not ("<" in m.text and ">" in m.text): return
     if not await quota_ok(m.from_user.id): return await m.answer("Limit reached")
     site=await new_site(m.from_user.id)
     try:
@@ -273,7 +259,6 @@ async def create_from_text(m:Message,state:FSMContext):
     except Exception as e:
         await drop_site_data(site["sid"]); return await m.answer(f"Failed {e}", reply_markup=cancel_kb)
     await state.clear(); await finish_new(m,site)
-
 @r.message(F.document)
 async def create_from_doc(m:Message,state:FSMContext,bot:Bot):
     uid=m.from_user.id; name=m.document.file_name or "file"
@@ -283,24 +268,21 @@ async def create_from_doc(m:Message,state:FSMContext,bot:Bot):
         site=await new_site(uid); sid=site["sid"]; await state.update_data(sid=sid,fresh=True)
     else: site=await db.sites.find_one({"sid":sid})
     if not site: return
-    data=await read_doc(bot,m.document)
+    buf=io.BytesIO(); await bot.download(m.document,destination=buf); data=buf.getvalue()
     if name.lower().endswith(".zip"): await add_zip(sid,data)
     else: await put(sid,name,data)
     await m.reply("Saved", reply_markup=KB([B("Manage",f"s:{sid}")]))
-    if sd.get("fresh") and await db.files.count_documents({"sid":sid})==1:
-        await state.clear(); await finish_new(m,site)
-
+    if sd.get("fresh") and await db.files.count_documents({"sid":sid})>=1:
+        await state.clear(); site=await db.sites.find_one({"sid":sid}); await finish_new(m,site)
 @r.callback_query(F.data.startswith("done:"))
 async def cb_done(c:CallbackQuery,state:FSMContext):
     sid=c.data.split(":")[1]; site=await db.sites.find_one({"sid":sid})
     if not site: return await c.answer("Gone",show_alert=True)
     await state.clear(); await refresh_title(sid); site=await db.sites.find_one({"sid":sid}); await send_card(c,site,banner="✨ Live!\n\n")
-
 @r.callback_query(F.data.startswith("s:"))
 async def cb_site(c:CallbackQuery,state:FSMContext):
     await reset(state); site=await auth(c,c.data.split(":")[1])
     if site: await send_card(c,site)
-
 @r.callback_query(F.data.startswith("fl:"))
 async def cb_fl(c:CallbackQuery):
     site=await auth(c,c.data.split(":")[1])
@@ -308,51 +290,17 @@ async def cb_fl(c:CallbackQuery):
         items=await db.files.find({"sid":site["sid"]}).to_list(200)
         txt="\n".join([f"{i['path']} {fmt_size(i['size'])}" for i in items]) or "No files"
         await show(c,txt,KB([B("Back",f"s:{site['sid']}")]))
-
-@r.callback_query(F.data.startswith("sl:"))
-async def cb_sl(c:CallbackQuery,state:FSMContext):
-    site=await auth(c,c.data.split(":")[1])
-    if not site: return
-    await state.set_state(S.slug); await state.update_data(sid=site["sid"])
-    await show(c,f"Current /s/{site['slug']}/\nSend new slug",cancel_kb)
-
-@r.message(StateFilter(S.slug), F.text)
-async def slug_in(m:Message,state:FSMContext):
-    sid=(await state.get_data())["sid"]; slug=m.text.strip().lower()
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,30}[a-z0-9]",slug): return await m.answer("Invalid", reply_markup=cancel_kb)
-    if await db.sites.find_one({"slug":slug,"sid":{"$ne":sid}}): return await m.answer("Taken", reply_markup=cancel_kb)
-    await db.sites.update_one({"sid":sid},{"$set":{"slug":slug}}); await state.clear()
-    await send_card(m,await db.sites.find_one({"sid":sid}),banner="✅ Updated\n\n")
-
 @r.callback_query(F.data.startswith("del:"))
 async def cb_del(c:CallbackQuery):
     site=await auth(c,c.data.split(":")[1])
     if site: await show(c,f"Delete {esc(site['title'])}?",KB([B("Yes",f"delok:{site['sid']}"),B("No",f"s:{site['sid']}")]))
-
 @r.callback_query(F.data.startswith("delok:"))
 async def cb_delok(c:CallbackQuery):
     site=await auth(c,c.data.split(":")[1])
-    if site: await delete_site(site); await show(c,"Deleted",KB([B("My Sites","my")]))# ───────── ADMIN ─────────
-@r.message(Command("admin"), admin_only)
-@r.callback_query(F.data=="adm", admin_only)
-async def adm(ev,state:FSMContext):
-    await reset(state); await show(ev,"Admin Panel",KB([B("📊 Stats","adm:stats"),B("⬅️ Menu","menu")]))
-
-@r.message(Command("stats"), admin_only)
-@r.callback_query(F.data=="adm:stats", admin_only)
-async def adm_stats(ev):
-    tu=await db.users.count_documents({}); ts=await db.sites.count_documents({})
-    await show(ev,f"Users {tu} Sites {ts}",KB([B("Back","adm")]))
-
-@r.callback_query(F.data.startswith("code:"))
-async def cb_code(c:CallbackQuery):
-    site=await auth(c,c.data.split(":")[1])
-    if site: await c.message.answer(f"Code <code>{site['code']}</code>"); await c.answer()
-
+    if site: await delete_site(site); await show(c,"Deleted",KB([B("My Sites","my")]))
 @r.callback_query()
-async def stale_callback(c:CallbackQuery): await c.answer("Expired, /start",show_alert=True)
+async def stale_callback(c:CallbackQuery): await c.answer("Expired",show_alert=True)
 
-# ───────── APP START ─────────
 async def create_app():
     await init_db()
     bot=Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
