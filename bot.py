@@ -1,5 +1,4 @@
-import asyncio, html as _html, io, logging, mimetypes, os, re, secrets, time, zipfile
-from urllib.parse import urlparse
+import asyncio, html as _html, io, logging, mimetypes, re, secrets, time, zipfile
 from aiohttp import web
 from aiogram import BaseMiddleware, Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
@@ -17,8 +16,6 @@ from database import db, init_db
 
 log = logging.getLogger("webify")
 BRAND = "Webify Bot☘️"
-DIV_PREMIUM = "╭─────────────☘️─────────────╮"
-DIV_PREMIUM2 = "╰─────────────☘️─────────────╯"
 DIV_LINE = "━━━━━━━━━━━━━━━━━━━━━━━"
 BTN_CREATE = "☘️ Create Website"
 BTN_MY = "📂 My Websites"
@@ -26,7 +23,7 @@ BTN_EDIT = "✏️ Edit by Code"
 BTN_HELP = "💎 Help"
 BTN_ADMIN = "🛠 Admin"
 
-for _ext,_mt in {".webp":"image/webp",".woff2":"font/woff2",".woff":"font/woff",".mjs":"application/javascript",".svg":"image/svg+xml",".ico":"image/x-icon",".json":"application/json",".webm":"video/webm"}.items():
+for _ext,_mt in {".webp":"image/webp",".woff2":"font/woff2",".mjs":"application/javascript",".svg":"image/svg+xml"}.items():
     mimetypes.add_type(_mt,_ext)
 
 def now(): return int(time.time())
@@ -52,22 +49,22 @@ def looks_like_code(t:str):
     s=(t or "").strip()
     if not s or s.startswith("/"): return False
     if re.search(r"(?m)^###\s*\S+\s*$",s) or s.startswith("```"): return True
-    return bool(re.search(r"<\s*(html|head|body|div|section|main|style|script|h[1-6]|p)",s,re.I))
+    return bool(re.search(r"<\s*(html|head|body|div)",s,re.I))
 
 async def site_size(sid:str):
     cur=db.files.aggregate([{"$match":{"sid":sid}},{"$group":{"_id":None,"s":{"$sum":"$size"}}}])
     r=await cur.to_list(length=1)
     return r[0]["s"] if r else 0
 
-async def put(sid:str,path:str,data:bytes,verify:bool=True):
+async def put_file(sid:str,path:str,data:bytes,need_space:bool=True):
     p=clean_path(path)
     if not p: raise ValueError(f"'{path}' invalid")
-    if len(data)>MAX_FILE: raise ValueError(f"{path} is {fmt_size(len(data))} > limit {fmt_size(MAX_FILE)}")
-    if verify:
+    if len(data)>MAX_FILE: raise ValueError(f"{path} is {fmt_size(len(data))} > limit")
+    if need_space:
         if not await db.sites.find_one({"sid":sid},{"_id":1}): raise ValueError("Site deleted")
         old=await db.files.find_one({"sid":sid,"path":p},{"size":1})
         total=await site_size(sid)-(old["size"] if old else 0)
-        if total+len(data)>MAX_SITE: raise ValueError(f"Site storage full {fmt_size(MAX_SITE)}")
+        if total+len(data)>MAX_SITE: raise ValueError(f"Storage full {fmt_size(MAX_SITE)}")
     mime=mimetypes.guess_type(p)[0] or "application/octet-stream"
     await db.files.update_one({"sid":sid,"path":p},{"$set":{"sid":sid,"path":p,"data":Binary(data),"mime":mime,"size":len(data),"ts":now()}},upsert=True)
     await db.sites.update_one({"sid":sid},{"$set":{"updated":now()}})
@@ -82,7 +79,7 @@ async def add_zip(sid:str,data:bytes):
         for i in infos:
             name=i.filename[len(prefix):] if prefix and i.filename.startswith(prefix) else i.filename
             if not name.strip(): continue
-            try: await put(sid,name,z.read(i),verify=False); cnt+=1
+            try: await put_file(sid,name,z.read(i),need_space=False); cnt+=1
             except: pass
         return cnt
 
@@ -111,28 +108,9 @@ async def quota_ok(uid:int): return uid in ADMINS or await db.sites.count_docume
 async def read_doc(bot,obj):
     buf=io.BytesIO(); await bot.download(obj,destination=buf); return buf.getvalue()
 
-WELCOME = f"""<b>☘️ Webify Bot — Premium</b>
-{DIV_PREMIUM}
-  ⚡️ <b>Instant Website Hosting</b>
-  🎨 Paste Code • Upload ZIP • Files
-  🌍 Free SSL • Custom Domain • Fast CDN
-{DIV_PREMIUM2}
-
-<i>Your ideas, live in seconds.</i>
-"""
-HELP_TEXT = f"""<b>☘️ Webify Help • Premium</b>
-{DIV_LINE}
-<b>🚀 Commands</b>
-- /new — Create new website
-- /mysites — Manage your sites
-- /edit CODE — Unlock via edit code
-"""
-MODE_TEXT = f"""<b>☘️ Create New Site</b>
-{DIV_LINE}
-<b>📝 Paste Code</b> — HTML direct
-<b>📄 Single / ZIP</b> — One shot deploy
-<b>📦 Multi Files</b> — Pro builder
-"""
+WELCOME = "<b>Webify Bot - Premium</b>\n╭─────────────☘️─────────────╮\n Instant Website Hosting\n╰─────────────☘️─────────────╯"
+HELP_TEXT = "<b>☘️ Webify Help</b>\n/new - Create\n/mysites - Manage"
+MODE_TEXT = "<b>☘️ Create New Site</b>\nPaste / Single / Multi"
 
 def B(text,data=None,url=None):
     if url: return InlineKeyboardButton(text=text,url=url)
@@ -141,7 +119,7 @@ def KB(*rows): return InlineKeyboardMarkup(inline_keyboard=[list(r) for r in row
 def reply_kb(uid:int):
     rows=[[KeyboardButton(text=BTN_CREATE),KeyboardButton(text=BTN_MY)],[KeyboardButton(text=BTN_EDIT),KeyboardButton(text=BTN_HELP)]]
     if uid in ADMINS: rows.append([KeyboardButton(text=BTN_ADMIN)])
-    return ReplyKeyboardMarkup(keyboard=rows,resize_keyboard=True,is_persistent=True, input_field_placeholder="☘️ Webify • Build something cool")
+    return ReplyKeyboardMarkup(keyboard=rows,resize_keyboard=True,is_persistent=True)
 def menu_kb(uid:int):
     rows=[[B("☘️ Create Website — Premium","new")],[B("📂 My Sites","my"),B("✏️ Edit Code","editcode")],[B("💎 Help & Guide","help")]]
     if uid in ADMINS: rows.append([B("🛠 Admin Panel","adm")])
@@ -153,26 +131,14 @@ def done_kb(sid:str): return KB([B("✅ Deploy Now","done:"+sid),B("✖️ Cance
 async def premium_card(site:dict):
     n=await db.files.count_documents({"sid":site["sid"]}); size=await site_size(site["sid"])
     link=site_url(site)
-    views=site.get("views",0)
-    return f"""<b>☘️ {esc(site['title'])}</b>
-{DIV_LINE}
-🌍 <b>Link:</b> {esc(link)}
-🔑 <b>Code:</b> <code>{site['code']}</code>
-📊 <b>Stats:</b> {n} files • {fmt_size(size)} • {views} views
-🆔 <b>Slug:</b> <code>{site['slug']}</code>
-<i>Webify Premium • Fast • Secure</i>
-"""
+    return f"<b>☘️ {esc(site['title'])}</b>\n{DIV_LINE}\nLink: {esc(link)}\nCode: <code>{site['code']}</code>\nFiles: {n} • {fmt_size(size)}\n"
 
 def panel_kb(site:dict):
     sid=site["sid"]
-    rows=[]
-    rows.append([B("🌍 Open Live Site ☘️", url=site_url(site))])
-    rows.append([B("📝 Paste New Code","pe:"+sid), B("📤 Upload Files","up:"+sid)])
-    rows.append([B("📁 Files Manager","fl:"+sid), B("🔗 Short Link","sl:"+sid)])
-    rows.append([B("🌐 Custom Domain","dm:"+sid), B("🔑 Show Code","code:"+sid)])
-    rows.append([B("🗑 Delete Site","del:"+sid), B("⬅️ My Sites","my")])
-    return KB(*rows)_PAGE="""<!doctype html><html><head><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>%(title)s</title><style>body{font-family:system-ui;background:#0a0a0a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:#111;border:1px solid #222;border-radius:16px;padding:32px;max-width:480px;text-align:center} h1{font-size:48px;margin:0} h2{color:#22c55e}</style></head><body><div class="card"><h1>%(code)s</h1><h2>%(title)s</h2><p>%(msg)s</p>%(extra)s</div></body></html>"""
-def page(status,code,title,msg,extra=""): return web.Response(text=_PAGE % {"code":code,"title":title,"msg":msg,"extra":extra}, status=status, content_type="text/html")
+    return KB([B("🌍 Open Live Site ☘️", url=site_url(site))],[B("📝 Paste New Code","pe:"+sid), B("📤 Upload Files","up:"+sid)],[B("📁 Files Manager","fl:"+sid), B("🔗 Short Link","sl:"+sid)],[B("🔑 Show Code","code:"+sid), B("🗑 Delete Site","del:"+sid)],[B("⬅️ My Sites","my")])def page(status,code,title,msg,extra=""):
+    html = f"<html><head><title>{title}</title><style>body{{background:#0a0a0a;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh}}.card{{background:#111;border:1px solid #222;border-radius:16px;padding:32px;text-align:center}}</style></head><body><div class=card><h1>{code}</h1><h2>{title}</h2><p>{msg}</p>{extra}</div></body></html>"
+    return web.Response(text=html, status=status, content_type="text/html")
+
 def not_found(): return page(404,"☘️","Not Found","This Webify site doesn't exist")
 
 async def serve_site(site:dict,tail:str,is_dir:bool):
@@ -198,7 +164,7 @@ async def serve_site(site:dict,tail:str,is_dir:bool):
         asyncio.create_task(_inc_view())
     mime=f.get("mime") or "application/octet-stream"
     textual=mime.startswith("text/") or mime in ("application/javascript","application/json","image/svg+xml","text/css")
-    headers={"Cache-Control":"public, max-age=60", "X-Powered-By":"Webify☘️"}
+    headers={"Cache-Control":"public, max-age=60", "X-Powered-By":"Webify"}
     return web.Response(body=bytes(f["data"]), content_type=mime, charset="utf-8" if textual else None, headers=headers)
 
 def _req_host(r): return r.host.split(":")[0].lower()
@@ -206,7 +172,7 @@ async def _site_by_host(h):
     s=await db.sites.find_one({"domain":h})
     if not s and h.startswith("www."): s=await db.sites.find_one({"domain":h[4:]})
     return s
-async def h_health(r): return web.json_response({"ok":True, "bot":"Webify Bot☘️", "status":"premium live"})
+async def h_health(r): return web.json_response({"ok":True, "bot":"Webify Bot☘️"})
 async def h_site_redirect(r):
     q=f"?{r.query_string}" if r.query_string else ""
     raise web.HTTPFound(f"/s/{r.match_info['slug']}/{q}")
@@ -220,7 +186,7 @@ async def h_root(r):
         site=await _site_by_host(host)
         if site: return await serve_site(site, tail, r.path.endswith("/"))
         return page(404,"☘️","Domain not connected","Add domain in bot first")
-    if tail=="": return page(200,"☘️ Webify Bot","Premium Hosting","Create websites from Telegram @WebifyBot")
+    if tail=="": return page(200,"☘️ Webify Bot","Premium Hosting","Telegram bot @WebifyBot")
     return not_found()
 
 @web.middleware
@@ -228,9 +194,9 @@ async def web_error_middleware(request, handler):
     try: return await handler(request)
     except web.HTTPException: raise
     except Exception as e:
-        ref=secrets.token_hex(3); log.exception("web error #%s on %s", ref, request.path)
-        if request.path=="/webhook": return web.Response(status=200, text="error logged")
-        return page(500,"💥","Webify Error","Something broke - Ref #"+ref)
+        ref=secrets.token_hex(3); log.exception("web error #%s", ref)
+        if request.path=="/webhook": return web.Response(status=200, text="ok")
+        return page(500,"Error","Webify Error","Ref #"+ref)
 
 def add_routes(app):
     app.router.add_get("/health", h_health)
@@ -269,10 +235,10 @@ async def show(ev,text,kb=None):
 async def premium_processing(m: Message):
     try:
         await m.bot.send_chat_action(m.chat.id, ChatAction.TYPING)
-        msg = await m.answer("☘️ <b>Webify • Processing</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n⚡️ Analyzing code...")
-        for t in ["⚡️ Deploying to CDN...","🎨 Optimizing assets...","🌍 Making it live..."]:
-            await asyncio.sleep(0.6)
-            try: await msg.edit_text(f"☘️ <b>Webify • Processing</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n{t}")
+        msg = await m.answer("☘️ <b>Webify • Processing</b>\n⚡️ Analyzing...")
+        for t in ["⚡️ Deploying to CDN...","🎨 Optimizing...","🌍 Live..."]:
+            await asyncio.sleep(0.5)
+            try: await msg.edit_text(f"☘️ <b>Webify</b>\n{t}")
             except: break
         return msg
     except: return None
@@ -288,7 +254,7 @@ async def send_card(ev,site,banner=""):
 
 async def finish_new(ev,site):
     await refresh_title(site["sid"]); site=await db.sites.find_one({"sid":site["sid"]})
-    banner=f"✨ <b>Deployed Successfully! ☘️</b>\n━━━━━━━━━━━━━━━━━━━━━━━\n"
+    banner=f"✨ <b>Deployed! ☘️</b>\n{DIV_LINE}\n"
     await send_card(ev,site,banner=banner)
 
 async def auth(c:CallbackQuery,sid:str):
