@@ -3,18 +3,17 @@ from config import MONGO_URL, DB_NAME
 import logging
 log = logging.getLogger("webmaker")
 
-class _DB: 
-    users=None
-    sites=None
-    files=None
+class _DB:
+    users = None
+    sites = None
+    files = None
 
 db = _DB()
 _client = None
 
 async def init_db():
     global _client
-    _client = AsyncIOMotorClient(MONGO_URL)
-    # ping
+    _client = AsyncIOMotorClient(MONGO_URL, serverSelectionTimeoutMS=15000)
     await _client.admin.command("ping")
     d = _client[DB_NAME]
     db.users, db.sites, db.files = d["users"], d["sites"], d["files"]
@@ -22,4 +21,5 @@ async def init_db():
     await db.sites.create_index("sid", unique=True)
     await db.sites.create_index("slug", unique=True)
     await db.sites.create_index("code", unique=True)
-    log.info("MongoDB connected OK")
+    await db.sites.create_index("owner")
+    log.info("MongoDB connected OK - motor 3.4.0")
