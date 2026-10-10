@@ -1,15 +1,15 @@
 """
 ⚙️ Config — saare env vars yahin.
-dotenv OPTIONAL hai — Render pe env vars direct milte hain.
+dotenv optional hai — Render pe env vars directly milte hain.
 """
 import os
 
-# ---- dotenv sirf local dev ke liye (optional) ----
+# dotenv sirf local dev ke liye (optional)
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass   # Render pe dotenv nahi chahiye, env vars already set hain
+    pass
 
 
 def _get(key: str, required: bool = True, default: str = "") -> str:
