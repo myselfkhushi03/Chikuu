@@ -1,8 +1,11 @@
 """
-Web Maker Bot — single file (bot.py)
-Telegram bot that turns code / files / ZIPs into live websites. Render Web Service + webhook + MongoDB.
-Start command:  python bot.py
+Web Maker Bot - single file (bot.py)
 """
+from config import *
+from database import db, init_db
+from texts import WELCOME, HELP_TEXT, DIV
+from keyboards import *
+from utils import esc, now, fmt_size, clean_path, site_url
 from config import *
 from database import db, init_db
 from texts import WELCOME, HELP_TEXT, DIV
