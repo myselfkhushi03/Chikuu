@@ -1,37 +1,110 @@
-# Web Maker Bot
+# ✨ Webify Bot — Telegram Edition
 
-Telegram bot that turns pasted code, single files, multiple files or ZIPs into live websites.
-Runs on a Render **Web Service** in webhook mode and hosts the sites itself (files stored in MongoDB).
+GenZ aesthetic website builder bot. Deploy on Render in 5 min.
 
-## Render setup
+## 🎯 Features
 
-- **Build command:** `pip install -r requirements.txt`
-- **Start command:** `python bot.py`
-- **Environment variables**
+- 💻 **Code Mode** — HTML/CSS/JS paste → website ready
+- 📁 **Files Mode** — multiple files ya `.zip` bhej → inline ho jaata hai
+- 📝 **Details Mode** — guided 5-step flow (title → tagline → color → layout → notes)
+- 📦 **Downloads** — ZIP + Single inlined HTML dono
+- 🗄️ **MongoDB** — sessions, users, global stats
+- ⚡ **Webhook mode** — Render-ready
+- 🐛 **Zero silent errors** — har exception user + logs me visible
 
-| Variable | Value |
-|---|---|
-| `BOT_TOKEN` | token from @BotFather |
-| `WEBHOOK_URL` | `https://<your-service>.onrender.com` (no trailing slash) |
-| `WEBHOOK_SECRET` | random string, only `A-Z a-z 0-9 _ -` |
-| `MONGO_URL` | MongoDB connection string |
-| `PORT` | `1000` |
-| `ADMIN_ID` | your Telegram user id (comma separate for more admins) |
+## 📂 Structure
 
-Optional: `DB_NAME` (webmaker), `MAX_SITES` (15 per user), `MAX_FILE_MB` (15), `MAX_SITE_MB` (60),
-`RENDER_API_KEY` + `RENDER_SERVICE_ID` (auto-add custom domains on Render).
+```
+webify-bot/
+├── bot.py                  # Entry point
+├── config.py               # Env vars
+├── logger.py               # Logging
+├── database.py             # MongoDB wrapper
+├── keyboards.py            # Inline keyboards
+├── templates.py            # HTML template builder
+├── utils.py                # Helpers
+├── handlers/
+│   ├── start.py            # /start /help /status /stats /reset /cancel
+│   ├── code_mode.py        # 💻
+│   ├── files_mode.py       # 📁 + /done
+│   ├── details_mode.py     # 📝
+│   └── callbacks.py        # Callback router
+├── requirements.txt
+├── Procfile
+├── render.yaml
+├── runtime.txt
+├── .env.example
+├── .gitignore
+└── README.md
+```
 
-Also set `PYTHON_VERSION=3.11.9` on Render.
+## 🚀 Render Deploy
 
-## Features
+### 1. GitHub push
 
-- Create by pasting code (use `### filename` separators for several files), single file, multiple files, or ZIP
-- Every site gets a short link `/s/<slug>/` and a unique edit code `EC-XXXXXXXXXX`
-- Edit by code from any account: replace code, upload/replace files, delete files, change short link, regenerate code, delete site
-- Custom domains: send the domain in the bot, point `CNAME` to your Render host
-- Admin: `/admin`, `/stats`, `/users`, `/sites`, `/site slug`, `/delsite slug`, `/ban id`, `/unban id`, `/broadcast`
+```bash
+git init
+git add .
+git commit -m "webify bot"
+git branch -M main
+git remote add origin <your-repo-url>
+git push -u origin main
+```
 
-## Notes
+### 2. Render setup
 
-- Free Render services sleep. Ping `https://<service>.onrender.com/health` every 5 min (UptimeRobot) to keep it awake.
-- You host user content: monitor `/sites` and delete or ban abusers (phishing, malware).
+- New → **Web Service**
+- Repo connect
+- Runtime: **Python 3**
+- Build: `pip install -r requirements.txt`
+- Start: `python bot.py`
+- Plan: **Free**
+
+### 3. Environment Variables
+
+| Key | Value | Example |
+|-----|-------|---------|
+| `BOT_TOKEN` | @BotFather se | `123456:ABC-xyz` |
+| `ADMIN_ID` | Tera Telegram ID | `123456789` |
+| `MONGO_URL` | MongoDB Atlas URI | `mongodb+srv://...` |
+| `WEBHOOK_URL` | Render URL | `https://webify-bot.onrender.com` |
+| `WEBHOOK_SECRET` | Random string | `xyz-abc-123-secret` |
+| `PORT` | `1000` (Render default) | `1000` |
+| `PYTHON_VERSION` | `3.11.9` | `3.11.9` |
+| `DB_NAME` | optional | `webify_bot` |
+| `LOG_LEVEL` | optional | `INFO` |
+
+### 4. Deploy → wait 2 min → bot live 🎉
+
+## 🤖 Commands
+
+| Command | Kya karta hai |
+|---------|--------------|
+| `/start` | Main menu |
+| `/help` | Guide |
+| `/status` | Current session |
+| `/stats` | Global stats |
+| `/done` | Files mode complete |
+| `/reset` | Session clear |
+| `/cancel` | Cancel flow |
+
+## 🐛 Debugging
+
+Agar bot reply na kare:
+
+1. **Logs check kare** Render dashboard → Logs tab
+2. **Webhook status** — browser me khol:
+   ```
+   https://api.telegram.org/bot<BOT_TOKEN>/getWebhookInfo
+   ```
+3. **Mongo connect** — Render logs me `MongoDB connected` dikhna chahiye
+4. **Port mismatch** — Render automatically `PORT` inject karta hai, hardcode mat kar
+
+Har module alag hai — bug aaye toh seedha file pakad me.
+
+## 📝 Notes
+
+- Font: `Playfair Display italic` (Daily Bonus aesthetic) har generated site me
+- Session TTL: 24h (MongoDB TTL index)
+- Free tier: 15 min inactivity → sleep → first message pe 30-60s wake time
+- Keep-alive ke liye UptimeRobot se `/` ping karwa le
